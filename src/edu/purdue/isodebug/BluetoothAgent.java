@@ -1,9 +1,11 @@
 package edu.purdue.isodebug;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
 import android.bluetooth.BluetoothAdapter;
@@ -13,10 +15,12 @@ import android.content.Context;
 import android.os.Handler;
 import android.util.Log;
 import android.widget.Toast;
-import org.isoblue.isoblue.ISOBlueDevice;
-import org.isoblue.isobus.ISOBUSSocket;
-import org.isoblue.isobus.PGN;
-import org.isoblue.isobus.PGN.InvalidPGNException;
+
+//import org.isoblue.isoblue.ISOBlueCommand;
+//import org.isoblue.isoblue.ISOBlueDevice;
+//import org.isoblue.isobus.ISOBUSSocket;
+//import org.isoblue.isobus.PGN;
+//import org.isoblue.isobus.PGN.InvalidPGNException;
 
 public class BluetoothAgent {
 	private final BluetoothAdapter mBluetoothAdapter;
@@ -83,7 +87,7 @@ public class BluetoothAgent {
 		}
 	}
 	
-	public void sendSampleBit(final BluetoothDevice device){
+	public void sendSampleBit(final BluetoothDevice device) throws IOException{
 		mydevice = device;
 		
 		try {
@@ -120,12 +124,117 @@ public class BluetoothAgent {
 
 		
 	}
-	
+
+	private synchronized BluetoothSocket reconnectSocket() {
+		try {
+			mSocket.close();
+		} catch (IOException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		}
+		mSocket = null;
+		while (mSocket == null) {
+			try {
+				mSocket = mydevice.createRfcommSocketToServiceRecord(MY_UUID);
+				mSocket.connect();
+			} catch (IOException e) {
+				mSocket = null;
+
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+				android.os.SystemClock.sleep(100);
+			}
+		}
+
+		return mSocket;
+	}
+
+
 	private class ReadThread extends Thread {
-		
+		private BufferedReader mReader;
+		private ReadThread() throws IOException {
+			mReader = new BufferedReader(new InputStreamReader(
+					mSocket.getInputStream()));
+		}
+
+		/*
+		 * (non-Javadoc)
+		 * 
+		 * @see java.lang.Thread#run()
+		 */
+		@Override
+		public void run() {
+			
+			while(true){
+				while(true){
+					String line;
+					try {
+						line = mReader.readLine();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+						break;
+					}
+					Log.d("Reeived", line);
+				}
+				
+				synchronized (mSocket) {
+					try {
+						reconnectSocket();
+						mReader = new BufferedReader(new InputStreamReader(
+								mSocket.getInputStream()));
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+			
+			
+		}
 	}
 	
 	private class WriteThread extends Thread {
+		private OutputStream mOut;
+
+		private WriteThread() throws IOException {
+			mOut = mSocket.getOutputStream();
+		}
 		
+		/*
+		 * (non-Javadoc)
+		 * 
+		 * @see java.lang.Thread#run()
+		 */
+		@Override
+		public void run() {
+
+			while (true) {
+				
+				while (true) {
+					try {
+						byte[] mymsg = "Hello Blue World".getBytes(); 
+						mOut.write(mymsg);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+						break;
+					} catch (NullPointerException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+						break;
+					}
+				}
+
+				synchronized (mSocket) {
+					try {
+						mOut = mSocket.getOutputStream();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+			}
+		}
 	}
 }
